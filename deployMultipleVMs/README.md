@@ -1,3 +1,11 @@
+<a href="https://portal.azure.com/#create/Microsoft.Template/uri/https://raw.githubusercontent.com/trevorndodds/Azure/master/deployMultipleVMs/azuredeploy.json" target="_blank">
+    <img src="http://azuredeploy.net/deploybutton.png"/>
+</a>
+<a href="http://armviz.io/#/?load=https://raw.githubusercontent.com/trevorndodds/Azure/master/deployMultipleVMs/azuredeploy.json" target="_blank">
+    <img src="http://armviz.io/visualizebutton.png"/>
+</a>
+
+
 ###### Deploying using existing parameters file (azuredeploy.parameters.json)
 
 1. Modify azuredeploy.parameters.json parameters file accordingly, be aware that this method can expose your local admin credential since it is defined in the parameters file.
