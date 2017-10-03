@@ -13,8 +13,8 @@
             "minLength": 1
         },
         "adminPassword": {
-          "type": "securestring",
-          "defaultValue": "[concat('Subscription#', subscription().subscriptionId)]"
+            "type": "securestring",
+            "defaultValue": "[concat('Subscription#', subscription().subscriptionId)]"
         },
         "imageSku": {
             "type": "string",
@@ -50,12 +50,18 @@
                 "Standard_A10",
                 "Standard_E32S_V3"
             ]
+        },
+        "dataDiskSourceUri": {
+            "defaultValue": "/subscriptions/9593b1cd-6332-4eb0-bc7a-6276f383cdb8/resourceGroups/TDPERM/providers/Microsoft.Compute/snapshots/snap00",
+            "type": "string"
         }
     },
     "variables": {
         "imagePublisher": "MicrosoftWindowsServer",
         "imageOffer": "WindowsServer",
         "osDiskName": "osDisk",
+        "dataDiskName": "[concat(parameters('vmName'), 'DataDisk')]",
+        "dataDiskSize": "10",
         "nsgName": "gridNSG",
         "vnetID": "[resourceId('Microsoft.Network/virtualNetworks', 'vNet')]",
         "subnetRef": "[concat(variables('vnetID'), '/subnets/', variables('virtualnetworkSubnetName'))]",
@@ -94,17 +100,37 @@
             }
         },
         {
+            "type": "Microsoft.Compute/disks",
+            "name": "[concat(variables('dataDiskName'),copyIndex())]",
+            "apiVersion": "2016-04-30-preview",
+            "location": "[resourceGroup().location]",
+            "copy": {
+                "name": "dataDiskCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "properties": {
+                "accountType": "[parameters('storageAccountType')]",
+                "creationData": {
+                    "createOption": "Copy",
+                    "sourceUri": "[parameters('dataDiskSourceUri')]"
+                },
+                "diskSizeGB": "[variables('dataDiskSize')]"
+            },
+            "dependsOn": []
+        },
+        {
             "name": "[concat(parameters('vmName'), copyIndex())]",
             "type": "Microsoft.Compute/virtualMachines",
             "location": "[resourceGroup().location]",
-            "apiVersion": "2015-06-15",
+            "apiVersion": "2016-04-30-preview",
             "copy": {
                 "name": "VmCopy",
                 "count": "[parameters('vmCount')]"
             },
             "dependsOn": [
                 "[concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]",
-                "[concat('Microsoft.Network/networkInterfaces/', variables('nicName'), copyIndex())]"
+                "[concat('Microsoft.Network/networkInterfaces/', variables('nicName'), copyIndex())]",
+                "[concat('Microsoft.Compute/disks/', variables('dataDiskName'), copyIndex())]"
             ],
             "properties": {
                 "hardwareProfile": {
@@ -123,13 +149,21 @@
                         "version": "latest"
                     },
                     "osDisk": {
-                        "name": "osdisk",
-                        "vhd": {
-                            "uri": "[concat(reference(concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName')),providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).primaryEndpoints.blob,variables('vmStorageAccountContainerName'),'/',concat(variables('osDiskName'),copyIndex()),'.vhd')]"
-                        },
-                        "caching": "ReadWrite",
                         "createOption": "FromImage"
-                    }
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 0,
+                            "name": "[concat(variables('dataDiskName'),copyIndex())]",
+                            "createOption": "Attach",
+                            "caching": "ReadWrite",
+                            "managedDisk": {
+                                "storageAccountType": "[parameters('storageAccountType')]",
+                                "id": "[resourceId('Microsoft.Compute/disks', concat(variables('dataDiskName'),copyIndex()))]"
+                            },
+                            "diskSizeGB": "[variables('dataDiskSize')]"
+                        }
+                    ]
                 },
                 "networkProfile": {
                     "networkInterfaces": [
