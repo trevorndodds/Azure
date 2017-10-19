@@ -1,0 +1,258 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmName": {
+            "type": "string",
+            "defaultValue": "GridNode",
+            "minLength": 1
+        },
+        "adminUsername": {
+            "type": "string",
+            "defaultValue": "gridadmin",
+            "minLength": 1
+        },
+        "adminPassword": {
+            "type": "securestring",
+            "defaultValue": "[concat('Subscription#', subscription().subscriptionId)]"
+        },
+        "imageSku": {
+            "type": "string",
+            "defaultValue": "2012-R2-Datacenter",
+            "allowedValues": [
+                "2012-R2-Datacenter",
+                "2016-Datacenter"
+            ]
+        },
+        "storageAccountType": {
+            "type": "string",
+            "defaultValue": "Standard_LRS",
+            "allowedValues": [
+                "Standard_LRS",
+                "Premium_LRS"
+            ]
+        },
+        "vmCount": {
+            "type": "int",
+            "defaultValue": 5,
+            "metadata": {
+                "description": "Number of Windows VMs to create."
+            }
+        },
+        "vmSize": {
+            "type": "string",
+            "defaultValue": "Standard_DS1_v2",
+            "allowedValues": [
+                "Standard_DS1_v2",
+                "Standard_DS3_v2",
+                "Standard_A8",
+                "Standard_A9",
+                "Standard_A10",
+                "Standard_E32S_V3"
+            ]
+        },
+        "existingVirtualNetworkResourceGroup": {
+            "type": "string",
+            "defaultValue": "GRID",
+            "metadata": {
+                "description": "Name of the existing VNET resource group"
+            }
+        },
+        "existingVNETName": {
+            "type": "string",
+            "defaultValue": "VN1",
+            "metadata": {
+                "description": "Name of the VNET"
+            }
+        },
+        "existingSubnetName": {
+            "type": "string",
+            "defaultValue": "SN1",
+            "metadata": {
+                "description": "Name of the subnet"
+            }
+        },
+        "dataDiskSourceUri": {
+            "defaultValue": "/subscriptions/9593b1cd-6332-4eb0-bc7a-6276f383cdb8/resourceGroups/TDPERM/providers/Microsoft.Compute/snapshots/snap00",
+            "type": "string"
+        }
+    },
+    "variables": {
+        "imagePublisher": "MicrosoftWindowsServer",
+        "imageOffer": "WindowsServer",
+        "osDiskName": "osDisk",
+        "dataDiskName": "[concat(parameters('vmName'), 'DataDisk')]",
+        "dataDiskSize": "10",
+        "nsgName": "gridNSG",
+        "vnetID": "[resourceId(parameters('existingVirtualNetworkResourceGroup'), 'Microsoft.Network/virtualNetworks', parameters('existingVNETName'))]",
+        "subnetRef": "[concat(variables('vnetID'),'/subnets/', parameters('existingSubnetName'))]",
+        "vmStorageAccountContainerName": "vhds",
+        "nicName": "[concat(parameters('vmName'), 'NetworkInterface')]",
+        "storageAccountName": "[concat('sa', uniqueString(resourceGroup().id))]"
+    },
+    "resources": [
+        {
+            "name": "[concat(variables('nicName'),copyIndex())]",
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Network/networkInterfaces",
+            "location": "[resourceGroup().location]",
+            "copy": {
+                "name": "NicCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+            ],
+            "properties": {
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+                },
+                "ipConfigurations": [
+                    {
+                        "name": "ip",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            }
+                        }
+                    }
+                ]
+            }
+            },
+        {
+            "type": "Microsoft.Compute/disks",
+            "name": "[concat(variables('dataDiskName'),copyIndex())]",
+            "apiVersion": "2016-04-30-preview",
+            "location": "[resourceGroup().location]",
+            "copy": {
+                "name": "dataDiskCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "properties": {
+                "accountType": "[parameters('storageAccountType')]",
+                "creationData": {
+                    "createOption": "Copy",
+                    "sourceUri": "[parameters('dataDiskSourceUri')]"
+                },
+                "diskSizeGB": "[variables('dataDiskSize')]"
+            },
+            "dependsOn": []
+        },
+        {
+            "name": "[concat(parameters('vmName'), copyIndex())]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2016-04-30-preview",
+            "copy": {
+                "name": "VmCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]",
+                "[concat('Microsoft.Network/networkInterfaces/', variables('nicName'), copyIndex())]",
+                "[concat('Microsoft.Compute/disks/', variables('dataDiskName'), copyIndex())]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[parameters('vmName')]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "[variables('imagePublisher')]",
+                        "offer": "[variables('imageOffer')]",
+                        "sku": "[parameters('imageSku')]",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "osdisk",
+                        "vhd": {
+                            "uri": "[concat(reference(concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName')),providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).primaryEndpoints.blob,variables('vmStorageAccountContainerName'),'/',concat(variables('osDiskName'),copyIndex()),'.vhd')]"
+                        },
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage"
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 0,
+                            "name": "[concat(variables('dataDiskName'),copyIndex())]",
+                            "createOption": "Attach",
+                            "caching": "ReadWrite",
+                            "managedDisk": {
+                                "storageAccountType": "[parameters('storageAccountType')]",
+                                "id": "[resourceId('Microsoft.Compute/disks', concat(variables('dataDiskName'),copyIndex()))]"
+                            },
+                            "diskSizeGB": "[variables('dataDiskSize')]"
+                        }
+                    ]
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('nicName'),copyIndex()))]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "name": "[variables('nsgName')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "NSG"
+            },
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-rdp",
+                        "properties": {
+                            "description": "Allow RDP",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "3389",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "allow-ds_fs",
+                        "properties": {
+                            "description": "Allow DS",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "27159",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 101,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('storageAccountName')]",
+            "type": "Microsoft.Storage/storageAccounts",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [],
+            "tags": {
+                "displayName": "sa"
+            },
+            "properties": {
+                "accountType": "[parameters('storageAccountType')]"
+            }
+        }
+    ]
+}
