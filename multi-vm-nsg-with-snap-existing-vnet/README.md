@@ -1,4 +1,4 @@
-<a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Ftrevorndodds%2FAzure%2Fmaster%2FdeployMultipleVMs%2Fazuredeploy.json" target="_blank">
+<a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Ftrevorndodds%2FAzure%2Fmaster%2Fmulti-vm-nsg-with-snap-existing-vnet%2Fazuredeploy.json" target="_blank">
     <img src="http://azuredeploy.net/deploybutton.png"/>
 </a>
 <a href="http://armviz.io/#/?load=https://raw.githubusercontent.com/trevorndodds/Azure/master/multi-vm-nsg-with-snap-existing-vnet/azuredeploy.json" target="_blank">
