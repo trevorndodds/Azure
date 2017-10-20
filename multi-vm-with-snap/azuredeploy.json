@@ -150,6 +150,7 @@
                     },
                     "osDisk": {
                         "createOption": "FromImage"
+                        "caching": "ReadWrite",
                     },
                     "dataDisks": [
                         {
