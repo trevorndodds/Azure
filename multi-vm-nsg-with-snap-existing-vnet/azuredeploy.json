@@ -170,8 +170,8 @@
                         "version": "latest"
                     },
                     "osDisk": {
-                        "createOption": "FromImage"
-                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite"
                     },
                     "dataDisks": [
                         {
