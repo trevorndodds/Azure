@@ -1,0 +1,276 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmSize": {
+            "type": "string",
+            "defaultValue": "Standard_A1",
+            "allowedValues": [
+                "Standard_DS1_v2",
+                "Standard_DS3_v2",
+                "Standard_A1",
+                "Standard_A8",
+                "Standard_A9",
+                "Standard_A10",
+                "Standard_E32S_V3"
+            ],
+            "minLength": 1
+        },
+        "windowsOSVersion": {
+            "type": "string",
+            "defaultValue": "2012-R2-Datacenter",
+            "allowedValues": [
+                "2008-R2-SP1",
+                "2012-Datacenter",
+                "2012-R2-Datacenter"
+            ],
+            "metadata": {
+                "description": "The Windows version for the VM. This will pick a fully patched image of this given Windows version. Allowed values: 2008-R2-SP1, 2012-Datacenter, 2012-R2-Datacenter."
+            }
+        },
+        "vmssName": {
+            "type": "string",
+            "metadata": {
+                "description": "DNS name used for public IP addresses and as base for naming other resources. Must be globally unique and 3 to 61 characters long."
+            },
+            "minLength": 3,
+            "maxLength": 61
+        },
+        "instanceCount": {
+            "type": "int",
+            "metadata": {
+                "description": "Number of VM instances (1000 or less)"
+            },
+            "minValue": 0,
+            "maxValue": 1000
+        },
+        "adminUsername": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "gridadmin",
+            "metadata": {
+                "description": "Administrator username on all VMs"
+            }
+        },
+        "adminPassword": {
+            "type": "securestring",
+            "defaultValue": "[concat('Subscription#', subscription().subscriptionId)]",
+            "metadata": {
+                "description": "Administrator password on all VMs"
+            }
+        },
+        "existingVnetResourceGroupName": {
+            "type": "string",
+            "defaultValue": "GRID",
+            "metadata": {
+                "description": "Name of the resourceGroup for the existing virtual network to deploy the scale set into."
+            }
+        },
+        "existingVnetName": {
+            "type": "string",
+            "defaultValue": "GRID-VN1",
+            "metadata": {
+                "description": "vName of the existing virtual network to deploy the scale set into."
+            }
+        },
+        "existingSubnetName": {
+            "type": "string",
+            "defaultValue": "GRID-SN1",
+            "metadata": {
+                "description": "Name of the existing subnet to deploy the scale set into."
+            }
+        },
+        "autoscalesettings_metricResourceUri": {
+            "defaultValue": "/subscriptions/xxxxxxxxx/resourceGroups/XXXX/providers/microsoft.insights/components/xxxxx",
+            "type": "string",
+            "metadata": {
+                "description": "Resource URi App Insights metric"
+            }
+        }
+    },
+    "variables": {
+        "location": "[resourceGroup().location]",
+        "storageAccountType": "Standard_LRS",
+        "namingInfix": "[toLower(substring(concat(parameters('vmssName'), uniqueString(resourceGroup().id)), 0, 9))]",
+        "nicName": "[concat(variables('namingInfix'), 'nic')]",
+        "nsgName": "[concat(variables('namingInfix'), 'NSG')]",
+        "asgName": "[concat(variables('namingInfix'), 'ASG')]",
+        "ipConfigName": "[concat(variables('namingInfix'), 'ipconfig')]",
+        "osType": {
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "WindowsServer",
+            "sku": "[parameters('windowsOSVersion')]",
+            "version": "latest"
+        },
+        "imageReference": "[variables('osType')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Compute/virtualMachineScaleSets",
+            "name": "[variables('namingInfix')]",
+            "location": "[variables('location')]",
+            "apiVersion": "2017-03-30",
+            "tags": {
+                "displayName": "VMScaleSet"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+            ],
+            "sku": {
+                "name": "[parameters('vmSize')]",
+                "tier": "Standard",
+                "capacity": "[parameters('instanceCount')]"
+            },
+            "properties": {
+                "overprovision": true,
+                "upgradePolicy": {
+                    "mode": "Manual"
+                },
+                "virtualMachineProfile": {
+                    "storageProfile": {
+                        "osDisk": {
+                            "createOption": "FromImage",
+                            "caching": "ReadWrite"
+                        },
+                        "imageReference": "[variables('imageReference')]"
+                    },
+                    "osProfile": {
+                        "computerNamePrefix": "[variables('namingInfix')]",
+                        "adminUsername": "[parameters('adminUsername')]",
+                        "adminPassword": "[parameters('adminPassword')]"
+                    },
+                    "networkProfile": {
+                        "networkInterfaceConfigurations": [
+                            {
+                                "name": "[variables('nicName')]",
+                                "properties": {
+                                    "primary": true,
+                                    "networkSecurityGroup": {
+                                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+                                    },
+                                    "ipConfigurations": [
+                                        {
+                                            "name": "[variables('ipConfigName')]",
+                                            "properties": {
+                                                "subnet": {
+                                                    "id": "[resourceId(parameters('existingVnetResourceGroupName'), 'Microsoft.Network/virtualNetworks/subnets', parameters('existingVnetName'), parameters('existingSubNetName'))]"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "name": "[variables('nsgName')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "NSG"
+            },
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-rdp",
+                        "properties": {
+                            "description": "Allow RDP",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "3389",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "allow-ds_fs",
+                        "properties": {
+                            "description": "Allow DS",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "27159",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 101,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Insights/autoscalesettings",
+            "name": "[variables('asgName')]",
+            "apiVersion": "2014-04-01",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "scale": null,
+            "properties": {
+                "profiles": [
+                    {
+                        "name": "scale condition",
+                        "capacity": {
+                            "minimum": 0,
+                            "maximum": 10,
+                            "default": 0
+                        },
+                        "rules": [
+                            {
+                                "metricTrigger": {
+                                    "metricName": "customMetrics/PendingTasks",
+                                    "metricNamespace": "",
+                                    "metricResourceUri": "[parameters('autoscalesettings_metricResourceUri')]",
+                                    "timeGrain": "PT1M",
+                                    "statistic": "Max",
+                                    "timeWindow": "PT5M",
+                                    "timeAggregation": "Last",
+                                    "operator": "GreaterThan",
+                                    "threshold": 100
+                                },
+                                "scaleAction": {
+                                    "direction": "Increase",
+                                    "type": "ChangeCount",
+                                    "value": 1,
+                                    "cooldown": "PT1M"
+                                }
+                            },
+                            {
+                                "metricTrigger": {
+                                    "metricName": "customMetrics/PendingTasks",
+                                    "metricNamespace": "",
+                                    "metricResourceUri": "[parameters('autoscalesettings_metricResourceUri')]",
+                                    "timeGrain": "PT1M",
+                                    "statistic": "Max",
+                                    "timeWindow": "PT5M",
+                                    "timeAggregation": "Last",
+                                    "operator": "LessThan",
+                                    "threshold": 10
+                                },
+                                "scaleAction": {
+                                    "direction": "Decrease",
+                                    "type": "ChangeCount",
+                                    "value": 1,
+                                    "cooldown": "PT5M"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "enabled": true,
+                "name": "[concat(parameters('vmssName'), 'ASG')]",
+                "targetResourceUri": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', variables('namingInfix'))]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachineScaleSets', variables('namingInfix'))]"
+            ]
+        }
+    ]
+}
