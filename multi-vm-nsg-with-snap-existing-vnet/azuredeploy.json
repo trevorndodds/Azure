@@ -73,7 +73,7 @@
             }
         },
         "dataDiskSourceUri": {
-            "defaultValue": "/subscriptions/9593b1cd-6332-4eb0-bc7a-6276f383cdb8/resourceGroups/TDPERM/providers/Microsoft.Compute/snapshots/snap00",
+            "defaultValue": "/subscriptions/xxxxxx/resourceGroups/XXXXX/providers/Microsoft.Compute/snapshots/snap00",
             "type": "string"
         }
     },
@@ -170,12 +170,8 @@
                         "version": "latest"
                     },
                     "osDisk": {
-                        "name": "osdisk",
-                        "vhd": {
-                            "uri": "[concat(reference(concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName')),providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).primaryEndpoints.blob,variables('vmStorageAccountContainerName'),'/',concat(variables('osDiskName'),copyIndex()),'.vhd')]"
-                        },
-                        "caching": "ReadWrite",
                         "createOption": "FromImage"
+                        "caching": "ReadWrite",
                     },
                     "dataDisks": [
                         {
