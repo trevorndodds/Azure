@@ -60,29 +60,29 @@
         },
         "existingVNETName": {
             "type": "string",
-            "defaultValue": "VN1",
+            "defaultValue": "GRID-VN1",
             "metadata": {
                 "description": "Name of the VNET"
             }
         },
         "existingSubnetName": {
             "type": "string",
-            "defaultValue": "SN1",
+            "defaultValue": "GRID-SN1",
             "metadata": {
                 "description": "Name of the subnet"
             }
         },
         "dataDiskSourceUri": {
-            "defaultValue": "/subscriptions/xxxxxx/resourceGroups/XXXXX/providers/Microsoft.Compute/snapshots/snap00",
+            "defaultValue": "/subscriptions/xxxx/resourceGroups/XXX/providers/Microsoft.Compute/snapshots/seed-snap",
             "type": "string"
         }
     },
     "variables": {
         "imagePublisher": "MicrosoftWindowsServer",
         "imageOffer": "WindowsServer",
-        "osDiskName": "osDisk",
+        "osDiskName": "[concat(parameters('vmName'), 'OsDisk')]",
         "dataDiskName": "[concat(parameters('vmName'), 'DataDisk')]",
-        "dataDiskSize": "10",
+        "dataDiskSize": "30",
         "nsgName": "gridNSG",
         "vnetID": "[resourceId(parameters('existingVirtualNetworkResourceGroup'), 'Microsoft.Network/virtualNetworks', parameters('existingVNETName'))]",
         "subnetRef": "[concat(variables('vnetID'),'/subnets/', parameters('existingSubnetName'))]",
@@ -158,7 +158,7 @@
                     "vmSize": "[parameters('vmSize')]"
                 },
                 "osProfile": {
-                    "computerName": "[parameters('vmName')]",
+                    "computerName": "[concat(parameters('vmName'), copyIndex())]",
                     "adminUsername": "[parameters('adminUsername')]",
                     "adminPassword": "[parameters('adminPassword')]"
                 },
@@ -170,8 +170,9 @@
                         "version": "latest"
                     },
                     "osDisk": {
+                        "caching": "ReadWrite",
                         "createOption": "FromImage",
-                        "caching": "ReadWrite"
+                        "name": "[concat(variables('osDiskName'),copyIndex())]"
                     },
                     "dataDisks": [
                         {
