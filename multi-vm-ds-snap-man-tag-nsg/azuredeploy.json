@@ -1,0 +1,318 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmName": {
+            "type": "string",
+            "defaultValue": "GridNode",
+            "minLength": 1,
+            "maxLength": 15
+        },
+        "adminUsername": {
+            "type": "string",
+            "defaultValue": "gridadmin",
+            "minLength": 1
+        },
+        "adminPassword": {
+            "type": "securestring",
+            "defaultValue": "[concat('Subscription#', subscription().subscriptionId)]"
+        },
+        "imageSku": {
+            "type": "string",
+            "defaultValue": "2012-R2-Datacenter",
+            "allowedValues": [
+                "2012-R2-Datacenter",
+                "2016-Datacenter"
+            ]
+        },
+        "storageType": {
+            "type": "string",
+            "defaultValue": "Premium_LRS",
+            "allowedValues": [
+                "Standard_LRS",
+                "Premium_LRS"
+            ]
+        },
+        "vmCount": {
+            "type": "int",
+            "defaultValue": 10,
+            "metadata": {
+                "description": "Number of Windows VMs to create."
+            }
+        },
+        "vmSize": {
+            "type": "string",
+            "defaultValue": "Standard_DS3_v2",
+            "allowedValues": [
+                "Standard_DS3_v2",
+                "Standard_DS4_v2",
+                "Standard_DS5_v2",
+                "Standard_F4",
+                "Standard_F8",
+                "Standard_F16",
+                "Standard_F4s",
+                "Standard_F8s",
+                "Standard_F16s"
+            ]
+        },
+        "existingVirtualNetworkResourceGroup": {
+            "type": "string",
+            "defaultValue": "GRID",
+            "metadata": {
+                "description": "Name of the existing VNET resource group"
+            }
+        },
+        "existingVNETName": {
+            "type": "string",
+            "defaultValue": "vnet",
+            "metadata": {
+                "description": "Name of the VNET"
+            }
+        },
+        "existingSubnetName": {
+            "type": "string",
+            "defaultValue": "subnet",
+            "metadata": {
+                "description": "Name of the subnet"
+            }
+        },
+        "dataDiskSourceURI": {
+            "defaultValue": "/subscriptions/xxxxxx/resourceGroups/XXX/providers/Microsoft.Compute/snapshots/seed-snap",
+            "type": "string"
+        },
+        "directorURL": {
+            "type": "string",
+            "defaultValue": "http://192.168.1.10:8000",
+            "metadata": {
+                "description": "DataSynapse Director URL"
+            }
+        },
+        "engineConfig": {
+            "type": "string",
+            "defaultValue": "Cloud_AZURE_B1",
+            "metadata": {
+                "description": "Engine Configuration"
+            }
+        },
+        "checkDomain": {
+            "type": "bool",
+            "defaultValue": false,
+            "metadata": {
+                "description": "Check if VM the is joined to the Domain"
+            }
+        },
+      "AppCodeTag": {
+      "type": "string",
+      "defaultValue": "AppCode",
+      "metadata": {
+        "description": "App Code Tag"
+       }
+      },
+	 "CostCenterTag": {
+      "type": "string",
+      "defaultValue": "1000",
+      "metadata": {
+        "description": "Cost Center Tag"
+      }
+     }
+    },
+    "variables": {
+        "imagePublisher": "MicrosoftWindowsServer",
+        "imageOffer": "WindowsServer",
+        "osDiskName": "[concat(parameters('vmName'), 'OsDisk')]",
+        "dataDiskName": "[concat(parameters('vmName'), 'DataDisk')]",
+        "dataDiskSize": "30",
+        "nsgName": "gridNSG",
+        "vnetID": "[resourceId(parameters('existingVirtualNetworkResourceGroup'), 'Microsoft.Network/virtualNetworks', parameters('existingVNETName'))]",
+        "subnetRef": "[concat(variables('vnetID'),'/subnets/', parameters('existingSubnetName'))]",
+        "vmStorageAccountContainerName": "vhds",
+        "nicName": "[concat(parameters('vmName'), 'NetworkInterface')]"
+    },
+    "resources": [
+        {
+            "name": "[concat(variables('nicName'),copyIndex())]",
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Network/networkInterfaces",
+            "location": "[resourceGroup().location]",
+            "copy": {
+                "name": "NicCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "tags": {
+                "App Code": "[parameters('AppCodeTag')]",
+                "Cost Center": "[parameters('CostCenterTag')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+            ],
+            "properties": {
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+                },
+                "ipConfigurations": [
+                    {
+                        "name": "ip",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            }
+                        }
+                    }
+                ]
+            }
+            },
+        {
+            "type": "Microsoft.Compute/disks",
+            "name": "[concat(variables('dataDiskName'),copyIndex())]",
+            "apiVersion": "2016-04-30-preview",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "App Code": "[parameters('AppCodeTag')]",
+                "Cost Center": "[parameters('CostCenterTag')]"
+            },
+            "copy": {
+                "name": "dataDiskCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "properties": {
+                "accountType": "[parameters('storageType')]",
+                "creationData": {
+                    "createOption": "Copy",
+                    "sourceUri": "[parameters('dataDiskSourceUri')]"
+                },
+                "diskSizeGB": "[variables('dataDiskSize')]"
+            },
+            "dependsOn": []
+        },
+        {
+            "name": "[concat(parameters('vmName'), copyIndex())]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "App Code": "[parameters('AppCodeTag')]",
+                "Cost Center": "[parameters('CostCenterTag')]"
+            },
+            "apiVersion": "2016-04-30-preview",
+            "copy": {
+                "name": "VmCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkInterfaces/', variables('nicName'), copyIndex())]",
+                "[concat('Microsoft.Compute/disks/', variables('dataDiskName'), copyIndex())]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[concat(parameters('vmName'), copyIndex())]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "[variables('imagePublisher')]",
+                        "offer": "[variables('imageOffer')]",
+                        "sku": "[parameters('imageSku')]",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "name": "[concat(variables('osDiskName'),copyIndex())]"
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 0,
+                            "name": "[concat(variables('dataDiskName'),copyIndex())]",
+                            "createOption": "Attach",
+                            "caching": "ReadWrite",
+                            "managedDisk": {
+                                "storageAccountType": "[parameters('storageType')]",
+                                "id": "[resourceId('Microsoft.Compute/disks', concat(variables('dataDiskName'),copyIndex()))]"
+                            },
+                            "diskSizeGB": "[variables('dataDiskSize')]"
+                        }
+                    ]
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('nicName'),copyIndex()))]"
+                        }
+                    ]
+                }
+            },
+            "resources": [
+            {
+                    "type": "extensions",
+                    "name": "CustomScriptExtension",
+                    "apiVersion": "2016-03-30",
+                    "location": "[resourceGroup().location]",
+                     "tags": {
+                        "App Code": "[parameters('AppCodeTag')]",
+                        "Cost Center": "[parameters('CostCenterTag')]"
+                    },
+                    "dependsOn": [
+                        "[concat(parameters('vmName'), copyIndex())]"
+                    ],
+                    "properties": {
+                        "publisher": "Microsoft.Compute",
+                        "type": "CustomScriptExtension",
+                        "typeHandlerVersion": "1.9",
+                        "autoUpgradeMinorVersion": true,
+                        "settings": {
+                            "fileUris": [],
+                            "commandToExecute": "[concat('powershell -ExecutionPolicy Unrestricted -File E:\\init.ps1 && powershell.exe -ExecutionPolicy Unrestricted -File F:\\master.ps1', ' -directorURL ', parameters('directorURL'), ' -engineConfig ', parameters('engineConfig'), ' -checkDomain ', parameters('checkDomain'))]"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "apiVersion": "2015-06-15",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "name": "[variables('nsgName')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "App Code": "[parameters('AppCodeTag')]",
+                "Cost Center": "[parameters('CostCenterTag')]",
+                "displayName": "NSG"
+            },
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-rdp",
+                        "properties": {
+                            "description": "Allow RDP",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "3389",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "allow-ds_fs",
+                        "properties": {
+                            "description": "Allow DS",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "27159",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 101,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+}
